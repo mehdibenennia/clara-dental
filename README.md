@@ -1,125 +1,149 @@
-# Clara Dental Reservation MVP
+# Clara Dental Reservation
 
-Clara is a patient-facing dental appointment reservation app built with Next.js, Neon PostgreSQL, and Vercel.
+Clara is a complete dental reservation MVP with a patient booking website and a protected staff back office. It is built with Next.js, Neon PostgreSQL, and Vercel.
 
-Live app: https://clara-dental.vercel.app
-GitHub: https://github.com/mehdibenennia/clara-dental
+- Live website: https://clara-dental.vercel.app
+- Back office: https://clara-dental.vercel.app/admin
+- GitHub: https://github.com/mehdibenennia/clara-dental
 
-## Current status
+## Available functionality
 
-The public booking flow is implemented and appointments are persisted in Neon. A back office is **not implemented yet**. There are no admin accounts, protected dashboard, calendar, status management, dentist availability controls, patient search, rescheduling, cancellation, email/SMS notifications, payments, or audit logs.
+### Patient experience
 
-## Functionality available
-
-- Responsive Clara Dental landing page
+- Responsive dental clinic landing page
 - Dentist selection
-- Appointment date and time selection
+- Real appointment date selection
+- Appointment time selection
 - Patient name and email collection
 - Required-field validation
-- Server-side booking API
-- Appointment confirmation screen
-- Responsive mobile layout
-- Neon PostgreSQL persistence
-- Vercel production deployment
+- Database-backed reservation creation
+- Confirmation summary
+- Staff sign-in link
+
+### Staff back office
+
+- Password-protected `/admin` area
+- Secure 12-hour HTTP-only session cookie
+- Reservation list ordered by appointment date and time
+- Summary counts for all, pending, confirmed, and completed reservations
+- Search by patient name, email, or dentist
+- Filter by reservation status
+- Reservation detail drawer
+- Status management: `pending`, `confirmed`, `completed`, `cancelled`
+- Internal clinic notes
+- Permanent reservation deletion with confirmation
+- Staff sign-out
+- Responsive desktop and mobile layouts
 
 ## Architecture
 
 ```text
-Patient browser
-  -> Next.js booking UI (app/page.tsx)
-  -> POST /api/appointments (app/api/appointments/route.ts)
-  -> Neon PostgreSQL appointments table
+Patient booking UI
+  -> POST /api/appointments
+  -> Neon appointments table
+
+Staff login
+  -> POST /api/admin/login
+  -> Signed HTTP-only admin cookie
+  -> Protected /admin and /api/admin/* routes
+  -> Neon appointment read/update/delete operations
 ```
 
-The database credential is stored server-side as `DATABASE_URL`. It is never sent to the browser.
+Database and admin secrets are server-only Vercel environment variables. They are never exposed to browser JavaScript.
 
 ## Project structure
 
 ```text
-app/page.tsx                 Patient booking UI
-app/globals.css              Responsive styling
-app/layout.tsx               Metadata and root layout
-app/api/appointments/route.ts Server-side Neon insert endpoint
-lib/supabase.ts              Legacy unused Supabase helper
-supabase/schema.sql          Original Supabase schema reference
-.env.example                 Environment variable template
+app/
+  page.tsx                         Patient booking UI
+  globals.css                     Public website styling
+  booking-extra.css               Booking form additions
+  api/appointments/route.ts       Public reservation creation API
+  admin/
+    page.tsx                      Protected dashboard entry
+    login/page.tsx                Staff login
+    AdminDashboard.tsx            Reservation management UI
+    admin.css                     Back-office styling
+  api/admin/
+    login/route.ts                Login and session creation
+    logout/route.ts               Session removal
+    appointments/route.ts         Protected reservation listing
+    appointments/[id]/route.ts    Protected update and delete actions
+lib/admin-auth.ts                 Password and signed-session helpers
 ```
 
 ## Database
 
-The live database is hosted in Neon, project `clara-dental`.
+The production PostgreSQL database is hosted in the Neon project `clara-dental`.
 
 ```sql
-create table if not exists appointments (
+create table appointments (
   id uuid primary key default gen_random_uuid(),
   dentist text not null,
   appointment_date date not null,
   appointment_time text not null,
   patient_name text not null,
   patient_email text not null,
-  created_at timestamptz not null default now()
+  status text not null default 'pending',
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 ```
 
-## API
+## Environment variables
 
-`POST /api/appointments` accepts:
-
-```json
-{
-  "dentist": "Dr. Sofia Benali",
-  "appointment_date": "2025-06-16",
-  "appointment_time": "10:30 AM",
-  "patient_name": "Amina Example",
-  "patient_email": "amina@example.com"
-}
-```
-
-On success it returns `{ "ok": true }`.
-
-## Local setup
-
-Requirements: Node.js 20+ and a Neon PostgreSQL database.
-
-```bash
-npm install
-```
-
-Create `.env.local`:
+Create `.env.local` for local development and configure the same secrets in Vercel Production:
 
 ```env
 DATABASE_URL=your-neon-connection-string
+ADMIN_PASSWORD=your-admin-password
+ADMIN_SESSION_SECRET=a-long-random-secret
 ```
 
-Run locally:
+Never commit `.env.local`. `ADMIN_SESSION_SECRET` should be a random value of at least 32 bytes.
+
+## Local development
 
 ```bash
+npm install
 npm run dev
 ```
 
-Open http://localhost:3000. Verify production compilation with `npm run build`.
+Open:
+
+- Booking website: http://localhost:3000
+- Back office: http://localhost:3000/admin
+
+Production verification:
+
+```bash
+npm run build
+```
+
+## APIs
+
+- `POST /api/appointments` — create a patient reservation
+- `POST /api/admin/login` — authenticate staff
+- `POST /api/admin/logout` — end the staff session
+- `GET /api/admin/appointments` — list reservations; admin only
+- `PATCH /api/admin/appointments/:id` — update status and notes; admin only
+- `DELETE /api/admin/appointments/:id` — permanently delete; admin only
 
 ## Deployment
 
-The repository is connected to Vercel. Pushes to `main` trigger deployments. Vercel Production must contain the secret variable:
+The GitHub `main` branch deploys automatically to Vercel. Environment variable changes require a fresh deployment.
 
-```text
-DATABASE_URL
-```
+## Security and next production improvements
 
-Redeploy after changing environment variables.
-
-## Security and production gaps
-
-- Never commit `.env.local` or expose `DATABASE_URL` with a `NEXT_PUBLIC_` prefix.
-- Add rate limiting, spam protection, request size limits, and stronger email validation.
-- Add authentication and role-based authorization before exposing appointment data.
-- Add database migrations and collision protection for duplicate time slots.
-
-## Recommended back-office milestone
-
-Add a protected `/admin` area with staff authentication, appointment table/calendar, filters, dentist availability, statuses (`pending`, `confirmed`, `completed`, `cancelled`), reschedule/cancel actions, notifications, and audit history.
+- Add rate limiting and bot protection to public booking and login endpoints.
+- Add schema validation and stricter email validation.
+- Replace the shared admin password with individual staff accounts and role-based access.
+- Add duplicate-slot protection at the database level.
+- Add audit history for reservation changes.
+- Add confirmation and cancellation emails or SMS.
+- Add dentist availability, rescheduling, and a calendar view.
 
 ## Local copy
 
-Desktop copy: `/Users/m4/Desktop/clara-dental`
+`/Users/m4/Desktop/clara-dental`
